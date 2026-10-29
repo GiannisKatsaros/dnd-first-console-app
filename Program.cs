@@ -1,51 +1,38 @@
-﻿string heroName = "Hero";
-string enemyName = "goblin";
-int seed = Random.Shared.Next();
+﻿using System.CommandLine;
+using Spectre.Console;
 
-for (int i = 0; i < args.Length; i++)
+Option<string> heroOption = new("--hero")
 {
-    string arg = args[i];
-    bool hasValue = i + 1 < args.Length;
+    Description = "Your hero's name",
+    DefaultValueFactory = _ => "Hero"
+};
 
-    if (arg == "-h" || arg == "--help")
-    {
-        Console.WriteLine("""
-            Usage: dotnet run -- [options]
-            
-            Options:
-                --hero <name>       Your hero's name (default: Hero)
-                --enemy <name>     goblin, orc or dragon (default: goblin)
-                --seed <number>     Replay a fight with the same dice rolls
-                -h, --help          Show this help                  
-            """);
-        return 0;
-    }
-    else if (arg == "--hero" && hasValue)
-    {
-        heroName = args[i + 1];
-        i++;
-    }
-    else if (arg == "--enemy" && hasValue)
-    {
-        enemyName =  args[i + 1].ToLower();
-        i++;
-    }
-    else if (arg == "--seed" && hasValue)
-    {
-        if (!int.TryParse(args[i + 1], out seed))
-        {
-            Console.WriteLine($"--seed needs a whole number, not '{args[i + 1]}'.");
-            return 1;
-        }
-        i++;
-    }
-    else
-    {
-        Console.WriteLine($"Unknown or incomplete option: {arg}");
-        Console.WriteLine("Run with --help to see the options.");
-        return 1;
-    }
+Option<string> enemyOption = new("--enemy")
+{
+    Description = "The enemy to fight",
+    DefaultValueFactory = _ => "goblin"
+};
+enemyOption.AcceptOnlyFromAmong("goblin", "orc", "dragon");
+
+Option<int?> seedOption = new("--seed")
+{
+    Description = "Replay a fight with the same dice rolls"
+};
+
+RootCommand rootCommand = new("Fight a goblin, an orc or a dragon in your terminal.");
+rootCommand.Options.Add(heroOption);
+rootCommand.Options.Add(enemyOption);
+rootCommand.Options.Add(seedOption);
+
+ParseResult parseResult = rootCommand.Parse(args);
+if (parseResult.Action is not null)
+{
+    return parseResult.Invoke();
 }
+
+string heroName = Markup.Escape(parseResult.GetRequiredValue(heroOption));
+string enemyName = parseResult.GetRequiredValue(enemyOption);
+int seed = parseResult.GetValue(seedOption) ?? Random.Shared.Next();
 
 int enemyHp;
 int enemyArmor;
@@ -66,15 +53,12 @@ switch (enemyName)
         enemyDie = 6;
         intro = "An orc blocks the road!";
         break;
-    case "dragon":
+    default:
         enemyHp = 40;
         enemyArmor = 16;
         enemyDie = 10;
         intro = "A dragon lands in front of you. This might be a mistake.";
         break;
-    default:
-        Console.WriteLine($"Unknown enemy: {enemyName}. Choose goblin, orc or dragon.");
-        return 1; 
 }
 
 Random random = new Random(seed);
@@ -92,17 +76,23 @@ int Roll(int sides)
     return random.Next(1, sides + 1);
 }
 
-Console.WriteLine(intro);
+AnsiConsole.Write(new FigletText(enemyName).Color(Color.Red));
+AnsiConsole.MarkupLine($"[bold]{intro}[/]");
 
 while (heroHp > 0 && enemyHp > 0)
 {
     round++;
-    Console.WriteLine();
-    Console.WriteLine($"Round {round} | {heroName} HP: {heroHp} | {enemyName} HP: {enemyHp}");
-    Console.Write("What do you do? (attack/defend/flee): ");
+    AnsiConsole.WriteLine();
+    AnsiConsole.Write(new Rule($"Round {round}"));
+    AnsiConsole.Write(new BarChart()
+        .Width(50)
+        .AddItem(heroName, heroHp, Color.Green)
+        .AddItem(enemyName, enemyHp, Color.Red));
 
-    string? input = Console.ReadLine();
-    string action = (input ?? "").Trim().ToLower();
+    string action = AnsiConsole.Prompt(
+        new SelectionPrompt<string>()
+            .Title("What do you do?")
+            .AddChoices("attack", "defend", "flee"));
     bool defending = false;
     
     if (action == "attack")
@@ -112,19 +102,19 @@ while (heroHp > 0 && enemyHp > 0)
         {
             int damage = Roll(heroDie);
             enemyHp -= damage;
-            Console.WriteLine($"You roll {toHit} and hit the {enemyName} for {damage} damage."); 
+            AnsiConsole.MarkupLine($"You roll [bold]{toHit}[/] and [green]hit the {enemyName} for {damage} damage[/]."); 
             log.Add($"Round {round}: You hit for {damage}");
         }
         else
         {
-            Console.WriteLine($"You roll {toHit} and miss.");
+            AnsiConsole.MarkupLine($"You roll [bold]{toHit}[/] and [grey]miss[/].");
             log.Add($"Round {round}: You missed");
         }
     }
     else if (action == "defend")
     {
         defending = true;
-        Console.WriteLine("You raise your shield.");
+        AnsiConsole.MarkupLine("You raise your [blue]shield[/].");
         log.Add($"Round {round}: You defended");
     }
     else if (action == "flee")
@@ -133,18 +123,13 @@ while (heroHp > 0 && enemyHp > 0)
         if (escapeRoll >= 10)
         {
             fled = true;
-            Console.WriteLine($"You roll {escapeRoll} and escape!");
+            AnsiConsole.MarkupLine($"You roll [bold]{escapeRoll}[/] and [yellow]escape![/]");
             log.Add($"Round {round}: You fled");
             break;
         }
         
-        Console.WriteLine($"You roll {escapeRoll}. The {enemyName} blocks your way.");
+        AnsiConsole.MarkupLine($"You roll [bold]{escapeRoll}[/]. The {enemyName} blocks your way.");
         log.Add($"Round {round}: You failed to flee");
-    }
-    else
-    {
-        Console.WriteLine($"You hesitate. The {enemyName} doesn't.");
-        log.Add($"Round {round}: You hesitated");
     }
     
     if (enemyHp <= 0)
@@ -162,38 +147,34 @@ while (heroHp > 0 && enemyHp > 0)
         }
         
         heroHp -= enemyDamage;
-        Console.WriteLine($"The {enemyName} rolls {enemyToHit} and hits you for {enemyDamage} damage.");
+        AnsiConsole.MarkupLine($"The {enemyName} rolls [bold]{enemyToHit}[/] and [red]hits you for {enemyDamage} damage[/].");
         log.Add($"Round {round}: {enemyName} hit for {enemyDamage}");
     }
     else
     {
-        Console.WriteLine($"The {enemyName} rolls {enemyToHit} and misses.");
+        AnsiConsole.MarkupLine($"The {enemyName} rolls [bold]{enemyToHit}[/] and [grey]misses[/].");
         log.Add($"Round {round}: {enemyName} missed");
     }
 }
         
+AnsiConsole.WriteLine();
 if (fled)
 {
-    Console.WriteLine($"{heroName} lives to fight another day.");
+    AnsiConsole.MarkupLine($"[yellow]{heroName} lives to fight another day.[/]");
 }
 else if (heroHp <= 0)
 {
-    Console.WriteLine($"{heroName} has been defeated.");
+    AnsiConsole.MarkupLine($"[red]{heroName} has been defeated.[/]");
 }
 else
 {
-    Console.WriteLine($"The {enemyName} is defeated!");
+    AnsiConsole.MarkupLine($"[green]The {enemyName} is defeated![/]");
 }
         
-Console.WriteLine();
-Console.WriteLine("Combat log:");
-foreach (var entry in log)
-{
-    Console.WriteLine(entry);
-}
+AnsiConsole.Write(new Panel(new Text(string.Join(Environment.NewLine, log)))
+    .Header("Combat log"));
 
-Console.WriteLine();
-Console.WriteLine($"Seed: {seed} (use --seed {seed} to replay this fight)");
+AnsiConsole.MarkupLine($"[grey]Seed: {seed} (use --seed {seed} to replay this fight)[/]");
 return 0;
 
 
