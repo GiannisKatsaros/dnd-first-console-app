@@ -1,12 +1,87 @@
-﻿Random random = new Random();
+﻿string heroName = "Hero";
+string enemyName = "goblin";
+int seed = Random.Shared.Next();
+
+for (int i = 0; i < args.Length; i++)
+{
+    string arg = args[i];
+    bool hasValue = i + 1 < args.Length;
+
+    if (arg == "-h" || arg == "--help")
+    {
+        Console.WriteLine("""
+            Usage: dotnet run -- [options]
+            
+            Options:
+                --hero <name>       Your hero's name (default: Hero)
+                --enemy <name>     goblin, orc or dragon (default: goblin)
+                --seed <number>     Replay a fight with the same dice rolls
+                -h, --help          Show this help                  
+            """);
+        return 0;
+    }
+    else if (arg == "--hero" && hasValue)
+    {
+        heroName = args[i + 1];
+        i++;
+    }
+    else if (arg == "--enemy" && hasValue)
+    {
+        enemyName =  args[i + 1].ToLower();
+        i++;
+    }
+    else if (arg == "--seed" && hasValue)
+    {
+        if (!int.TryParse(args[i + 1], out seed))
+        {
+            Console.WriteLine($"--seed needs a whole number, not '{args[i + 1]}'.");
+            return 1;
+        }
+        i++;
+    }
+    else
+    {
+        Console.WriteLine($"Unknown or incomplete option: {arg}");
+        Console.WriteLine("Run with --help to see the options.");
+        return 1;
+    }
+}
+
+int enemyHp;
+int enemyArmor;
+int enemyDie;
+string intro;
+
+switch (enemyName)
+{
+    case "goblin":
+        enemyHp = 10;
+        enemyArmor = 10;
+        enemyDie = 4;
+        intro = "A goblin jumps out of the bushes!";
+        break;
+    case "orc":
+        enemyHp = 16;
+        enemyArmor = 12;
+        enemyDie = 6;
+        intro = "An orc blocks the road!";
+        break;
+    case "dragon":
+        enemyHp = 40;
+        enemyArmor = 16;
+        enemyDie = 10;
+        intro = "A dragon lands in front of you. This might be a mistake.";
+        break;
+    default:
+        Console.WriteLine($"Unknown enemy: {enemyName}. Choose goblin, orc or dragon.");
+        return 1; 
+}
+
+Random random = new Random(seed);
 
 int heroHp = 20;
 int heroArmor = 12;
 int heroDie = 6;
-
-int goblinHp = 10;
-int goblinArmor = 10;
-int goblinDie = 4;
 
 List<string> log = [];
 int round = 0;
@@ -17,15 +92,15 @@ int Roll(int sides)
     return random.Next(1, sides + 1);
 }
 
-Console.WriteLine("A goblin jumps out of the bushes!");
+Console.WriteLine(intro);
 
-while (heroHp > 0 && goblinHp > 0)
+while (heroHp > 0 && enemyHp > 0)
 {
     round++;
     Console.WriteLine();
-    Console.WriteLine($"Round {round} | Hero HP: {heroHp} | Goblin HP: {goblinHp}");
+    Console.WriteLine($"Round {round} | {heroName} HP: {heroHp} | {enemyName} HP: {enemyHp}");
     Console.Write("What do you do? (attack/defend/flee): ");
-    
+
     string? input = Console.ReadLine();
     string action = (input ?? "").Trim().ToLower();
     bool defending = false;
@@ -33,11 +108,11 @@ while (heroHp > 0 && goblinHp > 0)
     if (action == "attack")
     {
         int toHit = Roll(20);
-        if (toHit >= goblinArmor)
+        if (toHit >= enemyArmor)
         {
             int damage = Roll(heroDie);
-            goblinHp -= damage;
-            Console.WriteLine($"You roll {toHit} and hit the goblin for {damage} damage."); 
+            enemyHp -= damage;
+            Console.WriteLine($"You roll {toHit} and hit the {enemyName} for {damage} damage."); 
             log.Add($"Round {round}: You hit for {damage}");
         }
         else
@@ -63,56 +138,62 @@ while (heroHp > 0 && goblinHp > 0)
             break;
         }
         
-        Console.WriteLine($"You roll {escapeRoll}. The goblin blocks your way.");
+        Console.WriteLine($"You roll {escapeRoll}. The {enemyName} blocks your way.");
         log.Add($"Round {round}: You failed to flee");
     }
     else
     {
-        Console.WriteLine("You hesitate. The goblin doesn't.");
+        Console.WriteLine($"You hesitate. The {enemyName} doesn't.");
         log.Add($"Round {round}: You hesitated");
     }
-
-    if (goblinHp <= 0)
+    
+    if (enemyHp <= 0)
     {
         break;
     }
-
-    int goblinToHit = Roll(20);
-    if (goblinToHit >= heroArmor)
+        
+    int enemyToHit = Roll(20);
+    if (enemyToHit >= heroArmor)
     {
-        int goblinDamage = Roll(goblinDie);
+        int enemyDamage = Roll(enemyDie);
         if (defending)
         {
-            goblinDamage /= 2;
+            enemyDamage /= 2;
         }
         
-        heroHp -= goblinDamage;
-        Console.WriteLine($"The goblin rolls {goblinToHit} and hits you for {goblinDamage} damage.");
-        log.Add($"Round {round}: goblin hit for {goblinDamage}");
+        heroHp -= enemyDamage;
+        Console.WriteLine($"The {enemyName} rolls {enemyToHit} and hits you for {enemyDamage} damage.");
+        log.Add($"Round {round}: {enemyName} hit for {enemyDamage}");
     }
     else
     {
-        Console.WriteLine($"The goblin rolls {goblinToHit} and misses.");
-        log.Add($"Round {round}: goblin missed");
+        Console.WriteLine($"The {enemyName} rolls {enemyToHit} and misses.");
+        log.Add($"Round {round}: {enemyName} missed");
     }
 }
-
+        
 if (fled)
 {
-    Console.WriteLine("You live to fight another day.");
+    Console.WriteLine($"{heroName} lives to fight another day.");
 }
 else if (heroHp <= 0)
 {
-    Console.WriteLine("You have been defeated.");
+    Console.WriteLine($"{heroName} has been defeated.");
 }
 else
 {
-    Console.WriteLine("The goblin is defeated!");
+    Console.WriteLine($"The {enemyName} is defeated!");
 }
-
+        
 Console.WriteLine();
 Console.WriteLine("Combat log:");
 foreach (var entry in log)
 {
     Console.WriteLine(entry);
 }
+
+Console.WriteLine();
+Console.WriteLine($"Seed: {seed} (use --seed {seed} to replay this fight)");
+return 0;
+
+
